@@ -7,12 +7,19 @@ import com.google.ortools.sat.LinearExpr;
 
 public class SATAssignmentAllocator {
 
-    public int[] assignMyTasks(int[][] workerTaskTable) {
+    private static final int TEAM_TASK_LIMIT = 2;
+
+    public int[] assignMyTasks(final int[][] workerTaskTable, final int[][] teamAssignments) {
         Loader.loadNativeLibraries();
         final CpModel model = new CpModel();
         // workerTaskTable[r][c] --> rth worker and cth task
+        // teamAssignments[index] --> all workers inside the retrieved array form a team.
+        // each team can perform a maximum of TEAM_TASK_LIMIT tasks.
         final int workerCount = workerTaskTable.length;
         final int taskCount = workerTaskTable[0].length;
+        // assuming equally sized teams
+        final int teamCount = teamAssignments.length;
+        final int teamSize = teamAssignments[0].length;
         // assignments[i][j] : if 1 --> ith worker  assigned jth task
         //                     if 0 --> ith worker !assigned jth task
         // this is what we pass into our solver and use to read back values.
@@ -42,6 +49,20 @@ public class SATAssignmentAllocator {
                 columnForTask[worker] = assignments[worker][task];
             }
             model.addEquality(LinearExpr.sum(columnForTask), 1);
+        }
+
+        // get each teams workers, for this set of workers encapsulated in a team,
+        // concatenate variables describing their 0/1 assignment and restrict this
+        // concatenated array to have a sum (i.e, assigned tasks) <= 2
+        for (int team = 0; team < teamCount; team++) {
+            IntVar[] teamConstraints = new IntVar[teamSize * taskCount];
+            int writeIndex = 0;
+            for (int teamMember = 0; teamMember < teamSize; teamMember++) {
+                for (int task = 0; task < taskCount; task++) {
+                    teamConstraints[writeIndex++] = assignments[teamAssignments[team][teamMember]][task];
+                }
+            }
+            model.addLessOrEqual(LinearExpr.sum(teamConstraints), TEAM_TASK_LIMIT);
         }
 
         // flatten the 2-d matrices, adhering to or-tools' input semantics.
